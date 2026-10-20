@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0e9281">
+  <title>站牌工坊 · 福州公交站牌生成器</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230e9281'/%3E%3Cpath d='M15 23h34M15 35h34M24 23v22M41 23v22' stroke='%23fff' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><path d="M7 9h18M7 16h18M12 9v15M21 9v15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+        </div>
+        <div class="brand-copy">
+          <h1>站牌工坊</h1>
+          <p>福州公交站牌生成器</p>
+        </div>
+      </div>
+      <div class="station-search" id="stationSearch">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m12.8 12.8 4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <input id="stationSearchInput" type="search" placeholder="搜索公交站，查看经过线路" autocomplete="off" spellcheck="false" aria-label="搜索公交站">
+        <div class="station-search-results" id="stationSearchResults" hidden></div>
+      </div>
+      <div class="topbar-note">
+        <span class="autosave-dot"></span>
+        <span id="saveStatus">修改会自动保存在本机</span>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost" id="btnReset" type="button">恢复示例</button>
+        <button class="btn btn-primary" id="btnExportTop" type="button">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v10m0 0 3.5-3.5M10 12 6.5 8.5M4 13.5V16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-2.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          导出 PNG
+        </button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="sidebar" aria-label="编辑面板">
+        <div class="tabs" role="tablist" aria-label="编辑分类">
+          <button class="tab is-active" id="tabLine" type="button" role="tab" aria-selected="true" aria-controls="panelLine" data-tab="line">线路信息</button>
+          <button class="tab" id="tabStations" type="button" role="tab" aria-selected="false" aria-controls="panelStations" data-tab="stations">站点管理 <span class="tab-count" id="stationTabCount">18</span></button>
+        </div>
+
+        <div class="sidebar-scroll">
+          <section class="tab-panel is-active" id="panelLine" role="tabpanel" aria-labelledby="tabLine">
+            <div class="panel-intro">
+              <h2>线路信息</h2>
+              <p>填写后会实时更新右侧站牌。</p>
+            </div>
+
+            <div class="field">
+              <label class="field-label" for="routeNumber">公交线路号 <em>回车自动查线</em></label>
+              <div class="route-input-row">
+                <input class="text-input route-input" id="routeNumber" type="text" value="K6" maxlength="12" autocomplete="off" spellcheck="false" placeholder="例如 K6 / 113">
+                <button class="btn btn-small btn-ghost route-swap-btn" id="btnSwapDirection" type="button" title="切换上行 / 下行" aria-label="切换上行或下行">换向</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <span class="field-label">所属公司 <em>自动识别 · 可手动改</em></span>
+              <div class="company-grid" id="companyGrid" role="radiogroup" aria-label="所属公司">
+                <button class="company-card" type="button" role="radio" aria-checked="true" data-company="fuzhou">
+                  <span class="company-swatch" style="--swatch:#0e9281"></span>
+                  <span class="company-name">福州公交集团</span>
+                  <span class="company-rgb">14 146 129</span>
+                </button>
+                <button class="company-card" type="button" role="radio" aria-checked="false" data-company="kangchi">
+                  <span class="company-swatch" style="--swatch:#876479"></span>
+                  <span class="company-name">康驰集团</span>
+                  <span class="company-rgb">135 100 121</span>
+                </button>
+                <button class="company-card" type="button" role="radio" aria-checked="false" data-company="minyun">
+                  <span class="company-swatch" style="--swatch:#025891"></span>
+                  <span class="company-name">闽运交通集团</span>
+                  <span class="company-rgb">2 88 145</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="theme-strip" aria-label="主题配色">
+              <div class="theme-chip" data-theme-chip="fuzhou"><span style="--chip:#0e9281"></span><b>集团</b></div>
+              <div class="theme-chip" data-theme-chip="kangchi"><span style="--chip:#876479"></span><b>康驰</b></div>
+              <div class="theme-chip" data-theme-chip="minyun"><span style="--chip:#025891"></span><b>闽运</b></div>
+              <div class="theme-chip" data-theme-chip="express"><span style="--chip:#003fa2"></span><b>快线</b></div>
+            </div>
+
+            <label class="express-toggle" for="isExpress">
+              <span class="express-toggle-copy">
+                <strong>快线</strong>
+                <small>仅 K 开头线路可用；普通快线、区间不会变蓝</small>
+              </span>
+              <input type="checkbox" id="isExpress">
+              <span class="switch" aria-hidden="true"></span>
+            </label>
+
+            <div class="field">
+              <div class="field-row">
+                <div>
+                  <label class="field-label" for="nextStop">下站 <span class="auto-badge">留空自动</span></label>
+                  <input class="text-input" id="nextStop" type="text" autocomplete="off" placeholder="">
+                </div>
+                <div>
+                  <label class="field-label" for="destStop">开往 <span class="auto-badge">留空自动</span></label>
+                  <input class="text-input" id="destStop" type="text" autocomplete="off" placeholder="">
+                </div>
+              </div>
+            </div>
+
+            <div class="field">
+              <div class="field-row">
+                <div>
+                  <label class="field-label" for="fare">票制</label>
+                  <input class="text-input" id="fare" type="text" value="一票制一元" autocomplete="off">
+                </div>
+                <div>
+                  <label class="field-label" for="dateStamp">右下角落款</label>
+                  <input class="text-input" id="dateStamp" type="text" value="2026.08.31征求" autocomplete="off">
+                </div>
+              </div>
+            </div>
+
+            <div class="field">
+              <span class="field-label">营运时间</span>
+              <div class="time-row">
+                <label class="time-field"><span>首班</span><input id="firstTime" type="time" value="06:30"></label>
+                <label class="time-field"><span>末班</span><input id="lastTime" type="time" value="21:30"></label>
+              </div>
+            </div>
+
+            <details class="advanced">
+              <summary>显示选项</summary>
+              <div class="advanced-body">
+                <label class="check-row"><input type="checkbox" id="showIcons" checked><span>显示站点设施标志（地铁 / 医院）</span></label>
+                <label class="check-row"><input type="checkbox" id="showDate" checked><span>显示右下角落款</span></label>
+              </div>
+            </details>
+          </section>
+
+          <section class="tab-panel" id="panelStations" role="tabpanel" aria-labelledby="tabStations" hidden>
+            <div class="station-head">
+              <div>
+                <h2>站点管理</h2>
+                <p><span id="stationCount">18</span> 个站点 · 按顺序生成站名</p>
+              </div>
+              <div class="station-head-actions">
+                <button class="btn btn-small btn-ghost" id="btnAutoFacilities" type="button" title="计算每站 200m 内最近的地铁站 / 医院，自动点亮站点标志">自动检测</button>
+                <button class="icon-btn" id="btnReverse" type="button" title="反转线路顺序" aria-label="反转线路顺序">
+                  <svg viewBox="0 0 20 20"><path d="M4 6h12M4 14h12M7 3 4 6l3 3M13 11l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+                <button class="btn btn-small btn-primary" id="btnAddStation" type="button">＋ 添加</button>
+              </div>
+            </div>
+
+            <div class="station-tip">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 18s6-5.1 6-10a6 6 0 1 0-12 0c0 4.9 6 10 6 10Z" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+              主要方式：点击下方地图，自动搜索附近公交站并接入线路。点站点序号或行空白处可设为当前站，该站及地图上对应圆点会变红，表头「下站」自动跟着改；双击站点可查看这个站的全部线路长图。载入带坐标的线路后会自动检测最近的地铁站/医院，200m 内自动点亮；也可以点「自动检测」重新查询，或在每站右侧手动改。站名强制单列、统一字号并顶部对齐，少字站自动均布空格；只有末尾括号会竖排到第二列，中间的括号仍留在主列。
+            </div>
+
+            <p class="facility-scan-status" id="facilityScanStatus" hidden></p>
+
+            <ol class="station-list" id="stationList"></ol>
+
+            <div class="station-foot">
+              <button class="text-btn" id="btnClearStations" type="button">清空站点</button>
+              <span>拖动或使用箭头排序</span>
+            </div>
+          </section>
+        </div>
+      </aside>
+
+      <section class="stage" aria-label="预览与地图">
+        <section class="preview-card">
+          <header class="card-head">
+            <div class="card-title">
+              <h2>站牌预览</h2>
+              <span class="meta-pill">1280 × 318 px</span>
+              <span class="design-badge" id="designBadge">常规线路</span>
+            </div>
+            <div class="preview-actions">
+              <button class="btn btn-small btn-ghost" id="btnZoomPreview" type="button">放大</button>
+              <label class="scale-select" for="exportScale">
+                <span>导出</span>
+                <select id="exportScale">
+                  <option value="1">1×</option>
+                  <option value="2" selected>2×</option>
+                  <option value="3">3×</option>
+                </select>
+              </label>
+              <button class="btn btn-small btn-ghost" id="btnExport" type="button">下载 PNG</button>
+            </div>
+          </header>
+          <div class="preview-viewport" id="previewViewport">
+            <div class="preview-scaler" id="previewScaler">
+              <div id="sign" class="sign" aria-label="公交站牌预览"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="map-card" id="mapCard">
+          <header class="card-head map-card-head">
+            <div class="card-title">
+              <h2>地图选站</h2>
+              <span class="map-status" id="mapStatus"><i></i> 未连接地图</span>
+            </div>
+            <div class="map-actions">
+              <button class="btn btn-small btn-route" id="btnAutoRoute" type="button">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 15h4.5a3 3 0 0 0 0-6H8a3 3 0 0 1 0-6h4M14 5h2M14 9h2M14 13h2M14 17h2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                自动查线
+              </button>
+              <label class="radius-field" for="radiusSelect">
+                <span>半径</span>
+                <select id="radiusSelect">
+                  <option value="200">200 m</option>
+                  <option value="300">300 m</option>
+                  <option value="500" selected>500 m</option>
+                  <option value="800">800 m</option>
+                  <option value="1000">1 km</option>
+                </select>
+              </label>
+              <button class="icon-btn map-pan-btn" id="btnMapPan" type="button" title="拖动地图（不会选站）" aria-label="拖动地图（不会选站）" aria-pressed="false">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.4 9.2V5.6a1.4 1.4 0 0 1 2.8 0v3.3m0-3.8a1.4 1.4 0 0 1 2.8 0v4m0-3.1a1.4 1.4 0 0 1 2.8 0v4.8c0 3.2-2.3 5.5-5.5 5.5-2.1 0-3.4-1-4.4-2.7L3.7 10a1.35 1.35 0 0 1 2.2-1.5l1.5 1.9" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <button class="icon-btn map-fullscreen-btn" id="btnMapFullscreen" type="button" title="全屏查看地图" aria-label="全屏查看地图" aria-pressed="false">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 3H3v5M12 3h5v5M8 17H3v-5M12 17h5v-5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <button class="btn btn-small btn-ghost" id="btnMapSettings" type="button">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M16.2 11.2a6.7 6.7 0 0 0 0-2.4l2-1.5-2-3.4-2.6 1a7 7 0 0 0-2-1.1L11.2 1H7.4L7 3.8a7 7 0 0 0-2 1.1l-2.6-1-2 3.4 2 1.5a6.7 6.7 0 0 0 0 2.4l-2 1.5 2 3.4 2.6-1a7 7 0 0 0 2 1.1l.4 2.8h3.8l.4-2.8a7 7 0 0 0 2-1.1l2.6 1 2-3.4-2-1.5Z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+                地图设置
+              </button>
+            </div>
+          </header>
+
+          <div class="map-wrap" id="mapWrap">
+            <div id="amap" class="amap"></div>
+
+            <div class="map-empty" id="mapEmpty">
+              <div class="map-empty-illustration" aria-hidden="true">
+                <svg viewBox="0 0 120 90">
+                  <path d="M8 66c12-22 24-12 36-28s22-4 34-18 20-4 34 6" fill="none" stroke="#9dcfc4" stroke-width="3" stroke-dasharray="7 7" stroke-linecap="round"/>
+                  <circle cx="18" cy="66" r="8" fill="#0e9281"/><circle cx="47" cy="38" r="8" fill="#0e9281"/><circle cx="81" cy="21" r="8" fill="#0e9281"/>
+                  <path d="M12 72h28M38 30h20" stroke="#d4e3de" stroke-width="5" stroke-linecap="round"/>
+                </svg>
+              </div>
+              <h3>用地图，从真实站点开始</h3>
+              <p>连接高德地图后，点击地图上的任意位置，自动识别附近公交站，选中即可接到线路末尾。示例站点尚未定位，地图新增的站点会自动带上坐标并连线。</p>
+              <button class="btn btn-primary" id="btnConnectMap" type="button">填写高德 Key 并连接</button>
+              <small>需要高德「Web端（JS API）」Key 与安全密钥</small>
+            </div>
+
+            <div class="map-loading" id="mapLoading" hidden>
+              <span class="spinner"></span>
+              <p>正在加载高德地图…</p>
+            </div>
+
+            <div class="nearby-card" id="nearbyCard" hidden>
+              <div class="nearby-head">
+                <div>
+                  <strong>附近公交站</strong>
+                  <span id="nearbySubtitle">500 m 内</span>
+                </div>
+                <button class="icon-btn" id="btnCloseNearby" type="button" aria-label="关闭附近站点">×</button>
+              </div>
+              <div class="nearby-list" id="nearbyList"></div>
+            </div>
+
+            <div class="map-hint" id="mapHint">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 18s6-5.1 6-10a6 6 0 1 0-12 0c0 4.9 6 10 6 10Z" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="8" r="2" fill="currentColor"/></svg>
+              <span id="mapHintText">点击地图任意位置 → 自动搜索附近公交站</span>
+            </div>
+          </div>
+
+          <footer class="map-foot">
+            <label class="inline-check" for="autoAddNearby">
+              <input type="checkbox" id="autoAddNearby">
+              <span>点击后自动添加最近站点</span>
+            </label>
+            <div class="map-foot-right">
+              <span class="auto-route-status" id="autoRouteStatus" hidden></span>
+              <button class="text-btn" id="btnClearAutoRoute" type="button" hidden>清除线路</button>
+              <span id="mapCount">0 个站点有坐标</span>
+              <button class="text-btn" id="btnFitRoute" type="button" disabled>查看全线</button>
+            </div>
+          </footer>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <dialog class="modal" id="mapSettingsDialog">
+    <form method="dialog" class="modal-inner" id="mapSettingsForm">
+      <header class="modal-head">
+        <div>
+          <h2>连接高德地图</h2>
+          <p>用于点击地图、识别附近公交站与生成连线。</p>
+        </div>
+        <button class="icon-btn" type="button" id="btnCloseSettings" aria-label="关闭">×</button>
+      </header>
+
+      <div class="modal-body">
+        <label class="field">
+          <span class="field-label">Web端（JS API）Key</span>
+          <input class="text-input" id="amapKeyInput" type="text" autocomplete="off" spellcheck="false" placeholder="粘贴高德开放平台 Key">
+        </label>
+        <label class="field">
+          <span class="field-label">安全密钥 jscode <em>部分 Key 需要</em></span>
+          <input class="text-input" id="amapSecurityInput" type="text" autocomplete="off" spellcheck="false" placeholder="securityJsCode">
+        </label>
+        <label class="field">
+          <span class="field-label">默认城市</span>
+          <input class="text-input" id="amapCityInput" type="text" value="福州" autocomplete="off">
+        </label>
+
+        <div class="notice">
+          <strong>配置提示</strong>
+          <p>在高德开放平台创建「Web端（JS API）」类型的 Key，并把当前访问域名（例如 <code>127.0.0.1</code>）加入白名单。Key 仅保存在本机浏览器 localStorage。</p>
+          <a href="https://console.amap.com/dev/key/app" target="_blank" rel="noreferrer">打开高德控制台 ↗</a>
+        </div>
+      </div>
+
+      <footer class="modal-foot">
+        <button class="btn btn-ghost" type="button" id="btnCancelSettings">取消</button>
+        <button class="btn btn-primary" type="submit" id="btnSaveSettings">保存并连接</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog class="modal" id="autoRouteDialog">
+    <div class="modal-inner">
+      <header class="modal-head">
+        <div>
+          <h2>自动查找线路</h2>
+          <p id="autoRouteSubtitle">正在查询公交线路…</p>
+        </div>
+        <button class="icon-btn" type="button" id="btnCloseAutoRoute" aria-label="关闭">×</button>
+      </header>
+      <div class="modal-body">
+        <div class="auto-route-body" id="autoRouteBody"></div>
+        <p class="line-dialog-note">「画线」只显示线路；「载入站牌」会替换当前站点，并同步首末班时间。</p>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn btn-ghost" type="button" id="btnCloseAutoRouteFoot">关闭</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <dialog class="modal preview-modal" id="previewDialog">
+    <div class="modal-inner">
+      <header class="modal-head">
+        <div>
+          <h2>站牌大图</h2>
+          <p>所见即所得，下载时按所选倍率输出 PNG。</p>
+        </div>
+        <button class="icon-btn" type="button" id="btnClosePreview" aria-label="关闭大图">×</button>
+      </header>
+      <div class="preview-modal-body">
+        <img id="previewImage" alt="公交站牌大图">
+      </div>
+      <footer class="modal-foot">
+        <button class="btn btn-ghost" type="button" id="btnClosePreviewFoot">关闭</button>
+        <button class="btn btn-primary" type="button" id="btnPreviewDownload">下载 PNG</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <dialog class="modal station-detail-dialog" id="stationDetailDialog">
+    <div class="modal-inner">
+      <header class="modal-head">
+        <div>
+          <h2 id="stationDetailTitle">车站详情</h2>
+          <p id="stationDetailSubtitle">查询经过这个站的全部公交线路。</p>
+        </div>
+        <button class="icon-btn" type="button" id="btnCloseStationDetail" title="关闭" aria-label="关闭">✕</button>
+      </header>
+      <div class="station-detail-body">
+        <div class="station-detail-status" id="stationDetailStatus">正在查询经过线路…</div>
+        <img class="station-detail-image" id="stationDetailImage" alt="车站线路长图" hidden>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn btn-ghost" type="button" id="btnCloseStationDetailFoot">关闭</button>
+        <button class="btn btn-ghost" type="button" id="btnSwapStationDetail" disabled>换向</button>
+        <button class="btn btn-primary" type="button" id="btnDownloadStationDetail" disabled>下载长图</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
