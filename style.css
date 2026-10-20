@@ -874,6 +874,58 @@ svg {
   text-align: right;
 }
 
+.quota-bar.is-disabled {
+  opacity: .52;
+  cursor: default;
+}
+
+.facility-modes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+
+.facility-modes label {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 3px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 10.5px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.facility-modes label:has(input:checked) {
+  border-color: var(--brand);
+  background: #effaf7;
+  color: var(--brand-dark);
+  font-weight: 600;
+}
+
+.facility-modes input {
+  margin: 0;
+  accent-color: var(--brand);
+}
+
+.facility-modes.is-disabled {
+  opacity: .52;
+}
+
+.facility-modes.is-disabled label {
+  cursor: default;
+}
+
 .station-help {
   margin-bottom: 12px;
   border: 1px solid #d8ebe5;

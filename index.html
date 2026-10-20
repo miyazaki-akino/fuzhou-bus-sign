@@ -147,7 +147,6 @@
                 <p><span id="stationCount">18</span> 个站点 · 按顺序生成站名</p>
               </div>
               <div class="station-head-actions">
-                <button class="btn btn-small btn-ghost" id="btnAutoFacilities" type="button" title="计算每站 200m 内最近的地铁站 / 医院，自动点亮站点标志">自动检测</button>
                 <button class="icon-btn" id="btnReverse" type="button" title="反转线路顺序" aria-label="反转线路顺序">
                   <svg viewBox="0 0 20 20"><path d="M4 6h12M4 14h12M7 3 4 6l3 3M13 11l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </button>
@@ -155,12 +154,31 @@
               </div>
             </div>
 
-            <label class="quota-bar" title="有缓存直接使用；没有缓存的站点再查高德，避免重复消耗额度">
+            <label class="quota-bar" title="关闭后不显示自动标记，也不查询地铁/医院">
+              <span class="quota-bar-main">
+                <input type="checkbox" id="facilityMarkersEnabled">
+                启用标记
+              </span>
+              <small>显示地铁 / 医院标记</small>
+            </label>
+
+            <div class="facility-modes" id="facilityModeRow">
+              <label>
+                <input type="radio" name="facilityMode" value="cache">
+                仅显示缓存
+              </label>
+              <label>
+                <input type="radio" name="facilityMode" value="update">
+                启动更新
+              </label>
+            </div>
+
+            <label class="quota-bar" title="仅「启动更新」模式可用；有缓存直接使用，没有缓存再查高德">
               <span class="quota-bar-main">
                 <input type="checkbox" id="cacheFirstFacilities" checked>
                 缓存优先
               </span>
-              <small>有缓存直接用，缺的再查高德</small>
+              <small id="cacheFirstHint">有缓存直接用，缺的再查高德</small>
             </label>
 
             <details class="station-help">
@@ -171,7 +189,7 @@
               <ol>
                 <li><strong>地图选站 / 自动查线：</strong>点击地图任意位置搜索附近公交站；也可以在左侧填线路号，自动查线后载入站牌。</li>
                 <li><strong>设为当前站：</strong>点站点序号或行空白处，该站和地图圆点会变红，表头「下站」自动跟着改；双击站点可查看全部线路长图。</li>
-                <li><strong>设施检测：</strong>带坐标的线路载入后可检测 200m 内的地铁/医院并自动点亮；「缓存优先」会先用已有缓存，没缓存的站点再查高德；关掉后会忽略缓存重新检测。</li>
+                <li><strong>标记模式：</strong>先打开「启用标记」。模式 1「仅显示缓存」只显示已有缓存，不请求高德；模式 2「启动更新」下，开启缓存优先就先用缓存、缺的再查高德，关闭缓存优先则忽略缓存全部重查。关闭总开关时完全不查询、不自动标记，手动图标保留。</li>
                 <li><strong>站名排版：</strong>站名强制单列，首字贴顶、末字贴底；每个字横向等宽，字高按字数纵向压缩，短站名只拉开间距；只有末尾括号进入第二列。</li>
               </ol>
             </details>

@@ -263,7 +263,7 @@
       "companyGrid", "isExpress", "nextStop", "destStop", "fare",
       "dateStamp", "firstTime", "lastTime", "showIcons", "showDate",
       "stationCount", "btnReverse", "btnAddStation", "stationList",
-      "btnClearStations", "btnAutoFacilities", "cacheFirstFacilities", "facilityScanStatus",
+      "btnClearStations", "facilityMarkersEnabled", "facilityModeRow", "cacheFirstFacilities", "cacheFirstHint", "facilityScanStatus",
       "previewViewport", "previewScaler", "sign",
       "designBadge", "exportScale", "btnExport", "mapStatus", "radiusSelect",
       "btnMapSettings", "mapWrap", "amap", "mapEmpty", "btnConnectMap",
@@ -351,12 +351,43 @@
 
     els.btnAddStation.addEventListener("click", addBlankStation);
     els.btnReverse.addEventListener("click", reverseStations);
-    els.btnAutoFacilities.addEventListener("click", () => autoDetectFacilities());
+    els.facilityMarkersEnabled.addEventListener("change", () => {
+      state.facilityMarkersEnabled = els.facilityMarkersEnabled.checked;
+      if (!state.facilityMarkersEnabled) {
+        cancelFacilityScan();
+        state.stations.forEach((station) => {
+          station.autoMetro = false;
+          station.autoHospital = false;
+        });
+        updateFacilityScanStatus("");
+        renderStationList();
+        renderSign();
+        showToast("标记已关闭：不显示、不查询");
+      } else {
+        runFacilityMode();
+        showToast("标记已启用");
+      }
+      syncFacilityControls();
+      scheduleSave();
+    });
+    els.facilityModeRow.querySelectorAll('input[name="facilityMode"]').forEach((input) => {
+      input.addEventListener("change", () => {
+        if (!input.checked) return;
+        state.facilityMode = input.value === "update" ? "update" : "cache";
+        syncFacilityControls();
+        if (state.facilityMarkersEnabled) runFacilityMode();
+        scheduleSave();
+      });
+    });
     els.cacheFirstFacilities.addEventListener("change", () => {
       state.cacheFirstFacilities = els.cacheFirstFacilities.checked;
+      updateCacheFirstHint();
       showToast(state.cacheFirstFacilities
-        ? "缓存优先已开启：有缓存直接用，缺的再查高德"
-        : "缓存优先已关闭：下次检测会重新查询全部站点");
+        ? "缓存优先：有缓存直接用，缺的再查高德"
+        : "忽略缓存：全部重新查高德");
+      if (state.facilityMarkersEnabled && state.facilityMode === "update") {
+        autoDetectFacilities();
+      }
       scheduleSave();
     });
     els.btnClearStations.addEventListener("click", clearStations);
@@ -473,6 +504,8 @@
       lastTime: "21:30",
       showIcons: true,
       showDate: true,
+      facilityMarkersEnabled: false,
+      facilityMode: "cache",
       cacheFirstFacilities: true,
       autoRoute: null,
       selectedStationId: null,
@@ -531,6 +564,8 @@
       merged.expressAuto = Boolean(merged.expressAuto);
       merged.showIcons = merged.showIcons !== false;
       merged.showDate = merged.showDate !== false;
+      merged.facilityMarkersEnabled = Boolean(merged.facilityMarkersEnabled);
+      merged.facilityMode = merged.facilityMode === "update" ? "update" : "cache";
       merged.cacheFirstFacilities = merged.cacheFirstFacilities !== false;
       merged.firstTime = normalizeTime(merged.firstTime, "06:30");
       merged.lastTime = normalizeTime(merged.lastTime, "21:30");
@@ -558,6 +593,12 @@
         }));
 
       if (!merged.stations.length) merged.stations = base.stations;
+      if (!merged.facilityMarkersEnabled) {
+        merged.stations.forEach((station) => {
+          station.autoMetro = false;
+          station.autoHospital = false;
+        });
+      }
       return merged;
     } catch (error) {
       console.warn("Failed to load saved state", error);
@@ -621,6 +662,30 @@
   /* UI sync                                                                */
   /* ---------------------------------------------------------------------- */
 
+  function updateCacheFirstHint() {
+    if (!els.cacheFirstHint) return;
+    els.cacheFirstHint.textContent = state.cacheFirstFacilities
+      ? "有缓存直接用，缺的再查高德"
+      : "忽略缓存，全部重新查高德";
+  }
+
+  function syncFacilityControls() {
+    if (!els.facilityMarkersEnabled) return;
+    const enabled = Boolean(state.facilityMarkersEnabled);
+    const updating = state.facilityMode === "update";
+    updateCacheFirstHint();
+    els.facilityMarkersEnabled.checked = enabled;
+    els.facilityModeRow.querySelectorAll('input[name="facilityMode"]').forEach((input) => {
+      input.checked = input.value === state.facilityMode;
+      input.disabled = !enabled;
+    });
+    els.facilityModeRow.classList.toggle("is-disabled", !enabled);
+    els.cacheFirstFacilities.checked = Boolean(state.cacheFirstFacilities);
+    els.cacheFirstFacilities.disabled = !enabled || !updating;
+    const cacheRow = els.cacheFirstFacilities.closest(".quota-bar");
+    if (cacheRow) cacheRow.classList.toggle("is-disabled", !enabled || !updating);
+  }
+
   function syncControls() {
     state.routeNumber = normalizeRouteNumber(state.routeNumber);
     applyAutoCompany();
@@ -635,7 +700,7 @@
     els.lastTime.value = state.lastTime;
     els.showIcons.checked = state.showIcons;
     els.showDate.checked = state.showDate;
-    els.cacheFirstFacilities.checked = state.cacheFirstFacilities;
+    syncFacilityControls();
     els.radiusSelect.value = String(state.settings.radius);
     els.autoAddNearby.checked = Boolean(state.settings.autoAdd);
     renderCompanyState();
@@ -1410,7 +1475,7 @@
     if (!details.length) return null;
 
     let skippedFacilityStops = 0;
-    if (state.showIcons) {
+    if (state.showIcons && state.facilityMarkersEnabled) {
       const uniqueStops = new Map();
       details.forEach(({ stopData }) => {
         stopData.stops.forEach((stop) => {
@@ -1426,16 +1491,19 @@
         if (token !== stationDetailToken) return null;
         if (onProgress) onProgress("facilities", index + 1, keys.length);
         const stops = uniqueStops.get(keys[index]);
-        let facility = state.cacheFirstFacilities
-          ? detailFacilityCache.get(keys[index])
-          : null;
-        if (!facility && state.cacheFirstFacilities) {
+        const useCache = state.facilityMode === "cache" || state.cacheFirstFacilities;
+        let facility = useCache ? detailFacilityCache.get(keys[index]) : null;
+        if (!facility && useCache) {
           facility = knownFacilityForStop(stops[0]);
           if (facility) {
             cacheDetailFacility(keys[index], facility);
           }
         }
         if (!facility) {
+          if (state.facilityMode === "cache") {
+            skippedFacilityStops += stops.length;
+            continue;
+          }
           if (newFacilityQueries >= DETAIL_FACILITY_QUERY_LIMIT) {
             skippedFacilityStops += stops.length;
             continue;
@@ -1600,7 +1668,9 @@
     els.stationDetailSubtitle.textContent =
       `第 ${sideIndex + 1} 侧 · ${rendered.renderedCount} 条线路 · K线在前，数字线、特殊线依次排列`
       + (rendered.skippedFacilityStops
-        ? `；${rendered.skippedFacilityStops} 个站点因单次上限未检测，重新打开可继续补全`
+        ? (state.facilityMode === "cache"
+          ? `；${rendered.skippedFacilityStops} 个站点无缓存，仅显示缓存模式下已跳过`
+          : `；${rendered.skippedFacilityStops} 个站点因单次上限未检测，重新打开可继续补全`)
         : "");
     const same = stationSideSignature(stationDetailSides[0]) === stationSideSignature(stationDetailSides[1]);
     els.btnSwapStationDetail.disabled = same;
@@ -2268,9 +2338,9 @@
   }
 
   function setFacilityScanBusy(busy) {
-    if (!els.btnAutoFacilities) return;
-    els.btnAutoFacilities.disabled = busy;
-    els.btnAutoFacilities.textContent = busy ? "检测中…" : "自动检测";
+    if (els.facilityModeRow) {
+      els.facilityModeRow.classList.toggle("is-busy", Boolean(busy));
+    }
   }
 
   function updateFacilityScanStatus(text, busy = false) {
@@ -2378,8 +2448,55 @@
     setFacilityScanBusy(false);
   }
 
+  function applyCachedFacilitiesToStations(options = {}) {
+    let applied = 0;
+    let skipped = 0;
+    state.stations.forEach((station) => {
+      if (!Number.isFinite(Number(station.lng)) || !Number.isFinite(Number(station.lat))
+        || station.lng === null || station.lat === null) {
+        return;
+      }
+      const cached = detailFacilityCache.get(detailFacilityKey(station));
+      if (cached) {
+        station.autoMetro = Boolean(cached.autoMetro);
+        station.autoHospital = Boolean(cached.autoHospital);
+        station.metroDistance = cached.metroDistance;
+        station.hospitalDistance = cached.hospitalDistance;
+        station.facilityScanned = true;
+        station.facilityVersion = FACILITY_SCAN_VERSION;
+        applied += 1;
+      } else {
+        station.autoMetro = false;
+        station.autoHospital = false;
+        skipped += 1;
+      }
+    });
+    updateFacilityScanStatus(`仅显示缓存：命中 ${applied} 站，未缓存 ${skipped} 站，未请求高德。`);
+    renderStationList();
+    renderSign();
+    scheduleSave();
+    if (!options.silent) showToast(`仅显示缓存：命中 ${applied} 站，未缓存 ${skipped} 站`);
+  }
+
+  function runFacilityMode() {
+    if (!state.facilityMarkersEnabled) return;
+    if (state.facilityMode === "cache") {
+      applyCachedFacilitiesToStations();
+      return;
+    }
+    autoDetectFacilities();
+  }
+
   async function autoDetectFacilities(options = {}) {
     if (facilityScanBusy) return;
+    if (!state.facilityMarkersEnabled) {
+      showToast("标记已关闭，先打开「启用标记」", true);
+      return;
+    }
+    if (state.facilityMode === "cache") {
+      applyCachedFacilitiesToStations();
+      return;
+    }
     if (!window.AMap) {
       showToast("请先连接高德地图，再自动检测设施", true);
       return;
@@ -2524,7 +2641,11 @@
   }
 
   function maybeAutoDetectFacilities() {
-    if (state.cacheFirstFacilities) return;
+    if (!state.facilityMarkersEnabled) return;
+    if (state.facilityMode === "cache") {
+      applyCachedFacilitiesToStations({ silent: true });
+      return;
+    }
     if (facilityScanBusy || !window.AMap) return;
     const needsScan = state.stations.some((station) =>
       station.lng !== null && station.lat !== null
