@@ -155,10 +155,26 @@
               </div>
             </div>
 
-            <div class="station-tip">
-              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 18s6-5.1 6-10a6 6 0 1 0-12 0c0 4.9 6 10 6 10Z" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
-              主要方式：点击下方地图，自动搜索附近公交站并接入线路。点站点序号或行空白处可设为当前站，该站及地图上对应圆点会变红，表头「下站」自动跟着改；双击站点可查看这个站的全部线路长图。载入带坐标的线路后会自动检测最近的地铁站/医院，200m 内自动点亮；也可以点「自动检测」重新查询，或在每站右侧手动改。站名强制单列，首字贴顶、末字贴底，底边全部对齐；短站名只拉开字间距，不改变字号。每个字的横向宽度统一，字高按字数纵向压缩（5字内100%、6字85%、7字73%、8字63%…）；站间距自动分配，优先保证单字宽度。只有末尾括号会竖排到第二列，括号与主列同顶边、同底边。
-            </div>
+            <label class="quota-bar" title="有缓存直接使用；没有缓存的站点再查高德，避免重复消耗额度">
+              <span class="quota-bar-main">
+                <input type="checkbox" id="cacheFirstFacilities" checked>
+                缓存优先
+              </span>
+              <small>有缓存直接用，缺的再查高德</small>
+            </label>
+
+            <details class="station-help">
+              <summary>
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 18s6-5.1 6-10a6 6 0 1 0-12 0c0 4.9 6 10 6 10Z" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+                使用说明
+              </summary>
+              <ol>
+                <li><strong>地图选站 / 自动查线：</strong>点击地图任意位置搜索附近公交站；也可以在左侧填线路号，自动查线后载入站牌。</li>
+                <li><strong>设为当前站：</strong>点站点序号或行空白处，该站和地图圆点会变红，表头「下站」自动跟着改；双击站点可查看全部线路长图。</li>
+                <li><strong>设施检测：</strong>带坐标的线路载入后可检测 200m 内的地铁/医院并自动点亮；「缓存优先」会先用已有缓存，没缓存的站点再查高德；关掉后会忽略缓存重新检测。</li>
+                <li><strong>站名排版：</strong>站名强制单列，首字贴顶、末字贴底；每个字横向等宽，字高按字数纵向压缩，短站名只拉开间距；只有末尾括号进入第二列。</li>
+              </ol>
+            </details>
 
             <p class="facility-scan-status" id="facilityScanStatus" hidden></p>
 

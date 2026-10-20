@@ -263,7 +263,7 @@
       "companyGrid", "isExpress", "nextStop", "destStop", "fare",
       "dateStamp", "firstTime", "lastTime", "showIcons", "showDate",
       "stationCount", "btnReverse", "btnAddStation", "stationList",
-      "btnClearStations", "btnAutoFacilities", "facilityScanStatus",
+      "btnClearStations", "btnAutoFacilities", "cacheFirstFacilities", "facilityScanStatus",
       "previewViewport", "previewScaler", "sign",
       "designBadge", "exportScale", "btnExport", "mapStatus", "radiusSelect",
       "btnMapSettings", "mapWrap", "amap", "mapEmpty", "btnConnectMap",
@@ -352,6 +352,13 @@
     els.btnAddStation.addEventListener("click", addBlankStation);
     els.btnReverse.addEventListener("click", reverseStations);
     els.btnAutoFacilities.addEventListener("click", () => autoDetectFacilities());
+    els.cacheFirstFacilities.addEventListener("change", () => {
+      state.cacheFirstFacilities = els.cacheFirstFacilities.checked;
+      showToast(state.cacheFirstFacilities
+        ? "缓存优先已开启：有缓存直接用，缺的再查高德"
+        : "缓存优先已关闭：下次检测会重新查询全部站点");
+      scheduleSave();
+    });
     els.btnClearStations.addEventListener("click", clearStations);
     els.btnReset.addEventListener("click", resetDemo);
 
@@ -466,6 +473,7 @@
       lastTime: "21:30",
       showIcons: true,
       showDate: true,
+      cacheFirstFacilities: true,
       autoRoute: null,
       selectedStationId: null,
       stations: DEMO_STATIONS.map((name) => ({
@@ -523,6 +531,7 @@
       merged.expressAuto = Boolean(merged.expressAuto);
       merged.showIcons = merged.showIcons !== false;
       merged.showDate = merged.showDate !== false;
+      merged.cacheFirstFacilities = merged.cacheFirstFacilities !== false;
       merged.firstTime = normalizeTime(merged.firstTime, "06:30");
       merged.lastTime = normalizeTime(merged.lastTime, "21:30");
       merged.autoRoute = normalizeAutoRoute(saved.autoRoute);
@@ -626,6 +635,7 @@
     els.lastTime.value = state.lastTime;
     els.showIcons.checked = state.showIcons;
     els.showDate.checked = state.showDate;
+    els.cacheFirstFacilities.checked = state.cacheFirstFacilities;
     els.radiusSelect.value = String(state.settings.radius);
     els.autoAddNearby.checked = Boolean(state.settings.autoAdd);
     renderCompanyState();
@@ -1416,8 +1426,10 @@
         if (token !== stationDetailToken) return null;
         if (onProgress) onProgress("facilities", index + 1, keys.length);
         const stops = uniqueStops.get(keys[index]);
-        let facility = detailFacilityCache.get(keys[index]);
-        if (!facility) {
+        let facility = state.cacheFirstFacilities
+          ? detailFacilityCache.get(keys[index])
+          : null;
+        if (!facility && state.cacheFirstFacilities) {
           facility = knownFacilityForStop(stops[0]);
           if (facility) {
             cacheDetailFacility(keys[index], facility);
@@ -2423,6 +2435,7 @@
     let nextIndex = 0;
     let completed = 0;
     let failed = 0;
+    let cachedCount = 0;
     updateFacilityScanStatus(`正在检测 0/${located.length} 个站点…`, true);
 
     const worker = async () => {
@@ -2432,6 +2445,22 @@
         if (index >= located.length) return;
         const station = located[index];
         try {
+          if (state.cacheFirstFacilities) {
+            const key = detailFacilityKey(station);
+            const cached = detailFacilityCache.get(key) || knownFacilityForStop(station);
+            if (cached) {
+              station.autoMetro = Boolean(cached.autoMetro);
+              station.autoHospital = Boolean(cached.autoHospital);
+              station.metroDistance = cached.metroDistance;
+              station.hospitalDistance = cached.hospitalDistance;
+              station.facilityScanned = true;
+              station.facilityVersion = FACILITY_SCAN_VERSION;
+              cachedCount += 1;
+              completed += 1;
+              updateFacilityScanStatus(`正在检测 ${completed}/${located.length} 个站点…`, true);
+              continue;
+            }
+          }
           const center = [Number(station.lng), Number(station.lat)];
           const result = await searchNearbyFacilitiesWithRetry(center);
           if (token !== facilityScanToken) return;
@@ -2481,7 +2510,8 @@
     const hospitalCount = located.filter((station) => station.autoHospital).length;
     const scannedCount = Math.max(0, located.length - failed);
     updateFacilityScanStatus(
-      `已检测 ${scannedCount} 站：${metroCount} 站 200m 内有地铁，${hospitalCount} 站 200m 内有医院。`
+      `已检测 ${scannedCount} 站（缓存命中 ${cachedCount} 站，新增查询 ${Math.max(0, scannedCount - cachedCount)} 站）：`
+      + `${metroCount} 站 200m 内有地铁，${hospitalCount} 站 200m 内有医院。`
       + (failed ? `（${failed} 站查询失败，可再点「自动检测」重试）` : "")
     );
     renderStationList();
@@ -2489,11 +2519,12 @@
     scheduleSave();
 
     if (!options.silent) {
-      showToast(`检测完成：地铁 ${metroCount} 站 · 医院 ${hospitalCount} 站`);
+      showToast(`检测完成：缓存 ${cachedCount} 站 · 新增查询 ${Math.max(0, scannedCount - cachedCount)} 站`);
     }
   }
 
   function maybeAutoDetectFacilities() {
+    if (state.cacheFirstFacilities) return;
     if (facilityScanBusy || !window.AMap) return;
     const needsScan = state.stations.some((station) =>
       station.lng !== null && station.lat !== null
