@@ -206,7 +206,18 @@
   let pendingCenter = null;
   let lastNearbyPois = [];
   let autoRouteLine = null;
+  let autoRouteConnectors = [];
   let autoRouteStopMarkers = [];
+  const DRIVING_CACHE_KEY = "fz-bus-sign-driving-cache-v1";
+  const DRIVING_CACHE_TTL = 30 * 24 * 60 * 60 * 1000;
+  const DRIVING_CACHE_LIMIT = 500;
+  const DRIVING_REQUEST_INTERVAL = 520;
+  let drivingCache = new Map();
+  let drivingPending = new Set();
+  let drivingFailed = new Set();
+  let drivingGate = Promise.resolve();
+  let drivingPluginPromise = null;
+  let drivingCacheTimer = 0;
   let autoRouteMeta = null;
   let autoRouteResults = [];
   let autoRouteBusy = false;
@@ -227,6 +238,7 @@
       if (poi) addStationFromPoi(poi);
     });
     loadDetailFacilityCache();
+    loadDrivingCache();
     ensureSelectedStation();
     syncControls();
     renderStationList();
@@ -1424,6 +1436,38 @@
         }));
       } catch (error) {
         console.warn("Facility cache save failed", error);
+      }
+    }, 400);
+  }
+
+  function loadDrivingCache() {
+    try {
+      const raw = localStorage.getItem(DRIVING_CACHE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (!data || !data.entries) return;
+      const cutoff = Date.now() - DRIVING_CACHE_TTL;
+      Object.entries(data.entries).forEach(([key, value]) => {
+        if (!value || !value.t || value.t < cutoff || !Array.isArray(value.path)) return;
+        drivingCache.set(key, value);
+      });
+    } catch (error) {
+      console.warn("Driving path cache load failed", error);
+    }
+  }
+
+  function persistDrivingCache() {
+    window.clearTimeout(drivingCacheTimer);
+    drivingCacheTimer = window.setTimeout(() => {
+      try {
+        const entries = [...drivingCache.entries()]
+          .sort((a, b) => (b[1].t || 0) - (a[1].t || 0))
+          .slice(0, DRIVING_CACHE_LIMIT);
+        localStorage.setItem(DRIVING_CACHE_KEY, JSON.stringify({
+          entries: Object.fromEntries(entries)
+        }));
+      } catch (error) {
+        console.warn("Driving path cache save failed", error);
       }
     }, 400);
   }
@@ -2913,6 +2957,8 @@
   function clearAutoRouteOverlay(options = {}) {
     if (map && autoRouteLine) map.remove(autoRouteLine);
     autoRouteLine = null;
+    if (map) autoRouteConnectors.forEach((line) => map.remove(line));
+    autoRouteConnectors = [];
     if (map) autoRouteStopMarkers.forEach((marker) => map.remove(marker));
     autoRouteStopMarkers = [];
     const hadRoute = Boolean(autoRouteMeta);
@@ -3008,7 +3054,7 @@
     }
   }
 
-  function snapPointToPath(lng, lat, path) {
+  function snapPointToPath(lng, lat, path, maxSnapDistance = 120) {
     if (!Array.isArray(path) || path.length < 2) return [lng, lat];
     const lonScale = Math.cos(lat * Math.PI / 180) * 111320;
     const latScale = 110540;
@@ -3035,7 +3081,7 @@
     }
 
     // Keep a stop in place if the returned path is unusually far away.
-    if (best && Math.sqrt(bestDistance) <= 120) return best;
+    if (best && (maxSnapDistance === Infinity || Math.sqrt(bestDistance) <= maxSnapDistance)) return best;
     return [lng, lat];
   }
 
@@ -3122,6 +3168,79 @@
       .map((station) => [Number(station.lng), Number(station.lat)]);
   }
 
+  function ensureDrivingPlugin() {
+    if (window.AMap && window.AMap.Driving) return Promise.resolve(true);
+    if (!window.AMap) return Promise.resolve(false);
+    if (!drivingPluginPromise) {
+      drivingPluginPromise = new Promise((resolve) => {
+        try {
+          window.AMap.plugin("AMap.Driving", () => resolve(Boolean(window.AMap.Driving)));
+        } catch (error) {
+          resolve(false);
+        }
+      });
+    }
+    return drivingPluginPromise;
+  }
+
+  function requestDrivingPath(origin, destination) {
+    const run = async () => {
+      const ready = await ensureDrivingPlugin();
+      if (!ready) return null;
+      await new Promise((resolve) => window.setTimeout(resolve, DRIVING_REQUEST_INTERVAL));
+      return new Promise((resolve) => {
+        try {
+          const policy = window.AMap.DrivingPolicy
+            ? window.AMap.DrivingPolicy.LEAST_TIME
+            : 0;
+          const driving = new window.AMap.Driving({
+            policy,
+            hideMarkers: true,
+            map: null
+          });
+          const from = new window.AMap.LngLat(origin[0], origin[1]);
+          const to = new window.AMap.LngLat(destination[0], destination[1]);
+          driving.search(from, to, (status, result) => {
+            if (status !== "complete" || !result || !Array.isArray(result.routes) || !result.routes.length) {
+              resolve(null);
+              return;
+            }
+            const path = [];
+            (result.routes[0].steps || []).forEach((step) => {
+              (step.path || []).forEach((point) => {
+                if (point && Number.isFinite(Number(point.lng)) && Number.isFinite(Number(point.lat))) {
+                  path.push([Number(point.lng), Number(point.lat)]);
+                }
+              });
+            });
+            resolve(path.length >= 2 ? path : null);
+          });
+        } catch (error) {
+          resolve(null);
+        }
+      });
+    };
+    const result = drivingGate.then(run);
+    drivingGate = result.catch(() => null);
+    return result;
+  }
+
+  function scheduleDrivingConnector(origin, destination, cacheKey) {
+    if (drivingCache.has(cacheKey) || drivingPending.has(cacheKey) || drivingFailed.has(cacheKey)) return;
+    drivingPending.add(cacheKey);
+    requestDrivingPath(origin, destination).then((path) => {
+      if (path) {
+        drivingCache.set(cacheKey, { path, t: Date.now() });
+        persistDrivingCache();
+        if (map && mapReady) syncMapRoute();
+      } else {
+        drivingFailed.add(cacheKey);
+      }
+    }).finally(() => {
+      drivingPending.delete(cacheKey);
+    });
+  }
+
   function syncMapRoute() {
     if (!map || !mapReady) {
       updateMapFoot();
@@ -3134,6 +3253,8 @@
       map.remove(routePolyline);
       routePolyline = null;
     }
+    autoRouteConnectors.forEach((line) => map.remove(line));
+    autoRouteConnectors = [];
 
     const color = state.express ? EXPRESS_META.color : COMPANY_META[state.company].color;
     if (autoRouteLine && typeof autoRouteLine.setOptions === "function") {
@@ -3143,6 +3264,50 @@
     const coordStations = state.stations
       .map((station, index) => ({ ...station, index }))
       .filter((station) => station.lng != null && station.lat != null);
+
+    // Manually added stops are not in the AMap path. Connect them from the
+    // neighbouring stop, using the same stroke style as the main route.
+    if (autoRouteMeta && autoRouteMeta.mode === "stations"
+      && Array.isArray(autoRouteMeta.path) && autoRouteMeta.path.length >= 2) {
+      const segmentKeys = new Set();
+      const addConnector = (from, to) => {
+        const origin = [Number(from.lng), Number(from.lat)];
+        const destination = [Number(to.lng), Number(to.lat)];
+        if (!origin.every(Number.isFinite) || !destination.every(Number.isFinite)) return;
+        const cacheKey = `${origin[0].toFixed(5)},${origin[1].toFixed(5)}|${destination[0].toFixed(5)},${destination[1].toFixed(5)}`;
+        if (segmentKeys.has(cacheKey)) return;
+        segmentKeys.add(cacheKey);
+        const cached = drivingCache.get(cacheKey);
+        const path = cached && Array.isArray(cached.path) && cached.path.length >= 2
+          ? cached.path
+          : [origin, destination];
+        if (!cached) scheduleDrivingConnector(origin, destination, cacheKey);
+        const connector = new AMap.Polyline({
+          path,
+          strokeColor: color,
+          strokeWeight: 5,
+          strokeOpacity: .84,
+          lineJoin: "round",
+          lineCap: "round",
+          showDir: true,
+          zIndex: 85
+        });
+        autoRouteConnectors.push(connector);
+        map.add(connector);
+      };
+
+      coordStations.forEach((station, index) => {
+        const lng = Number(station.lng);
+        const lat = Number(station.lat);
+        const [snapLng, snapLat] = snapPointToPath(lng, lat, autoRouteMeta.path, Infinity);
+        if (distanceMeters(lng, lat, snapLng, snapLat) < 25) return;
+        const previous = coordStations[index - 1];
+        const next = coordStations[index + 1];
+        if (previous) addConnector(previous, station);
+        else if (next) addConnector(station, next);
+        if (previous && next) addConnector(station, next);
+      });
+    }
 
     if (coordStations.length >= 2 && !autoRouteMeta) {
       routePolyline = new AMap.Polyline({
