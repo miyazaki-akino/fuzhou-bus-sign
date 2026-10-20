@@ -3421,14 +3421,32 @@
       return { columns };
     });
 
-    const maxColumns = Math.max(1, ...layouts.map((layout) => layout.columns.length));
-    const targetGlyphWidth = Math.min(
-      baseStationSize,
-      (cellWidth - 2 - (maxColumns - 1) * columnGap) / maxColumns
+    // Prioritize a readable character width. Only after that is the remaining
+    // horizontal space distributed between stations.
+    const internalGaps = layouts.reduce(
+      (sum, layout) => sum + Math.max(0, layout.columns.length - 1) * columnGap,
+      0
     );
+    const totalColumns = layouts.reduce((sum, layout) => sum + layout.columns.length, 0);
+    const minStationGap = 2;
+    const targetGlyphWidth = Math.max(5, Math.min(
+      baseStationSize,
+      (available - internalGaps - (count - 1) * minStationGap) / totalColumns
+    ));
+    const blockWidths = layouts.map((layout) =>
+      layout.columns.length * targetGlyphWidth + (layout.columns.length - 1) * columnGap
+    );
+    const usedWidth = blockWidths.reduce((sum, width) => sum + width, 0);
+    const stationGap = count > 1 ? Math.max(minStationGap, (available - usedWidth) / (count - 1)) : 0;
+    const stationCenters = [];
+    let cursor = left;
+    blockWidths.forEach((width) => {
+      stationCenters.push(cursor + width / 2);
+      cursor += width + stationGap;
+    });
 
     stations.forEach((station, index) => {
-      const center = left + index * (cellWidth + gap) + cellWidth / 2;
+      const center = stationCenters[index];
       const hasMetro = station.icon || station.autoMetro;
       const hasHospital = station.hospital || station.autoHospital;
       const flags = state.showIcons
