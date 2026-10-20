@@ -150,7 +150,7 @@
   const REGULAR_NUMBER_COLOR = "#e2000b";
   const CANVAS_CHINESE_FONT = '"Noto Sans SC", "Microsoft YaHei", "PingFang SC", sans-serif';
   const CANVAS_NUMBER_FONT = '"Bahnschrift", "Arial Narrow", "Noto Sans SC", sans-serif';
-  const MAX_STATION_GLYPH_SCALE = 1.6;
+  const MAX_STATION_GLYPH_SCALE = 1.05;
 
   const METRO_ICON_SMALL = `<img class="station-metro-icon" src="assets/icon-metro.png" alt="">`;
   const HOSPITAL_ICON_SMALL = `<img class="station-hospital-icon" src="assets/icon-hospital.png" alt="">`;
@@ -741,6 +741,23 @@
     return 12;
   }
 
+  function stationHeightScale(charCount) {
+    if (charCount <= 5) return 1;
+    const scaleByChars = {
+      6: 0.85,
+      7: 0.73,
+      8: 0.63,
+      9: 0.55,
+      10: 0.48,
+      11: 0.42,
+      12: 0.37
+    };
+    if (scaleByChars[charCount]) return scaleByChars[charCount];
+    let scale = scaleByChars[12];
+    for (let count = 13; count <= charCount; count += 1) scale *= 0.9;
+    return Math.max(0.2, scale);
+  }
+
   function splitStationName(name) {
     const text = String(name || "未命名").trim();
     // Only a parenthetical group at the very end gets its own column.
@@ -771,7 +788,7 @@
     return char === "（" || char === "(" || char === "）" || char === ")";
   }
 
-  function drawVerticalGlyph(ctx, char, x, y, glyphScale = 1.38) {
+  function drawVerticalGlyph(ctx, char, x, y, glyphScale = 1.05) {
     ctx.save();
     ctx.translate(x, y);
     if (isParenChar(char)) {
@@ -3387,11 +3404,12 @@
     const gap = 1;
     const available = 1276 - left - right;
     const cellWidth = (available - gap * (count - 1)) / count;
-    // All station names share one top edge and one font size; shorter names
-    // get evenly distributed spacing instead of a smaller font.
+    // Five characters use 100% height; longer names step down (85%, 73%, 63%…)
+    // so long vertical names stay full without stretching short names apart.
     const iconY = 122;
     const baseNameTop = 140;
     const maxHeight = 116;
+    const baseStationSize = (maxHeight / 5) * 0.98;
     const columnGap = 1.5;
 
     const layouts = stations.map((station) => {
@@ -3403,24 +3421,11 @@
       return { columns };
     });
 
-    const maxChars = Math.max(1, ...layouts.flatMap((layout) =>
-      layout.columns.map((column) => column.chars.length)
-    ));
     const maxColumns = Math.max(1, ...layouts.map((layout) => layout.columns.length));
-    const availableWidth = cellWidth - 2 - (maxColumns - 1) * columnGap;
-    const heightLimitedSize = Math.max(5, Math.min(
-      getStationFontSize(count),
-      (maxHeight / maxChars) * 0.98
-    ));
-    let size = heightLimitedSize;
-    let glyphScale = Math.min(
-      MAX_STATION_GLYPH_SCALE,
-      availableWidth / (maxColumns * heightLimitedSize)
+    const targetGlyphWidth = Math.min(
+      baseStationSize,
+      (cellWidth - 2 - (maxColumns - 1) * columnGap) / maxColumns
     );
-    if (glyphScale < 1) {
-      glyphScale = 1;
-      size = Math.max(5, availableWidth / maxColumns);
-    }
 
     stations.forEach((station, index) => {
       const center = left + index * (cellWidth + gap) + cellWidth / 2;
@@ -3471,24 +3476,23 @@
       }
 
       const columns = layouts[index].columns;
-      const glyphWidth = size * glyphScale;
-      const totalWidth = columns.length * glyphWidth + (columns.length - 1) * columnGap;
-      const firstColumnX = center - totalWidth / 2 + glyphWidth / 2;
+      const totalWidth = columns.length * targetGlyphWidth + (columns.length - 1) * columnGap;
+      const firstColumnX = center - totalWidth / 2 + targetGlyphWidth / 2;
 
       ctx.save();
       ctx.fillStyle = station.id === (state.selectedStationId || state.stations[0]?.id)
         ? "#e2000b"
         : "#181818";
-      ctx.font = `${index === 0 ? 600 : 500} ${size}px ${CANVAS_CHINESE_FONT}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
 
       columns.forEach((column, columnIndex) => {
-        const columnX = firstColumnX + columnIndex * (glyphWidth + columnGap);
-        const count = column.chars.length;
-        // Justify between the shared top edge and the shared bottom edge:
-        // the first glyph sits at the top and the last glyph at the bottom.
-        const step = count > 1 ? (maxHeight - size) / (count - 1) : 0;
+        const columnX = firstColumnX + columnIndex * (targetGlyphWidth + columnGap);
+        const charCount = Math.max(1, column.chars.length);
+        const size = Math.max(5, baseStationSize * stationHeightScale(charCount));
+        const glyphScale = Math.min(3.2, targetGlyphWidth / size);
+        const step = charCount > 1 ? (maxHeight - size) / (charCount - 1) : 0;
+        ctx.font = `${index === 0 ? 600 : 500} ${size}px ${CANVAS_CHINESE_FONT}`;
         column.chars.forEach((char, charIndex) => {
           if (char === " ") return;
           const charY = baseNameTop + size / 2 + charIndex * step;
